@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const twilioTools = require('../tools/twilioTools');
 
 class ElevenLabsService {
   constructor() {
@@ -185,6 +186,39 @@ class ElevenLabsService {
                 latestPending.response = corrected;
               }
             }
+            break;
+
+          case 'client_tool_call':
+            // Handle tool calls from the agent
+            const toolCall = response.client_tool_call;
+            console.log('🔧 Tool call received:', toolCall.tool_name);
+
+            // Execute the tool with user's phone number as context
+            twilioTools.executeTool(
+              toolCall.tool_name,
+              toolCall.parameters,
+              phoneNumber
+            ).then(result => {
+              // Send tool result back to ElevenLabs
+              const toolResult = {
+                type: 'client_tool_result',
+                tool_call_id: toolCall.tool_call_id,
+                result: JSON.stringify(result),
+                is_error: !result.success
+              };
+
+              ws.send(JSON.stringify(toolResult));
+              console.log('✅ Tool result sent:', result.success ? 'success' : 'failed');
+            }).catch(error => {
+              console.error('❌ Tool execution error:', error);
+              // Send error result
+              ws.send(JSON.stringify({
+                type: 'client_tool_result',
+                tool_call_id: toolCall.tool_call_id,
+                result: JSON.stringify({ success: false, error: error.message }),
+                is_error: true
+              }));
+            });
             break;
 
           case 'ping':
