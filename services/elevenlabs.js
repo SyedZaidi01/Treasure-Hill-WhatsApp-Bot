@@ -15,10 +15,12 @@ class ElevenLabsService {
       // Get or create conversation session for this phone number
       let conversationId = this.conversationSessions.get(phoneNumber);
 
-      const endpoint = `${this.baseUrl}/convai/conversation`;
+      // Updated endpoint for conversational AI
+      const endpoint = `${this.baseUrl}/convai/conversations`;
 
       const requestData = {
         agent_id: this.agentId,
+        mode: 'text',
         text: message
       };
 
@@ -27,6 +29,8 @@ class ElevenLabsService {
         requestData.conversation_id = conversationId;
       }
 
+      console.log('Sending to ElevenLabs:', { endpoint, agentId: this.agentId, hasConversationId: !!conversationId });
+
       const response = await axios.post(endpoint, requestData, {
         headers: {
           'xi-api-key': this.apiKey,
@@ -34,17 +38,27 @@ class ElevenLabsService {
         }
       });
 
+      console.log('ElevenLabs response:', response.data);
+
       // Store conversation ID for future messages
       if (response.data.conversation_id) {
         this.conversationSessions.set(phoneNumber, response.data.conversation_id);
       }
 
       // Extract the text response from ElevenLabs
-      const assistantResponse = response.data.response || response.data.text || 'Sorry, I could not process your message.';
+      const assistantResponse = response.data.analysis?.text
+        || response.data.text
+        || response.data.message
+        || 'Sorry, I could not process your message.';
 
       return assistantResponse;
     } catch (error) {
       console.error('ElevenLabs API Error:', error.response?.data || error.message);
+      console.error('Request details:', {
+        agentId: this.agentId,
+        apiKeyPresent: !!this.apiKey,
+        apiKeyPrefix: this.apiKey?.substring(0, 8) + '...'
+      });
       throw new Error('Failed to get response from ElevenLabs');
     }
   }
