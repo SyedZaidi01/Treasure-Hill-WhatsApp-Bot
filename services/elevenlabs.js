@@ -52,20 +52,30 @@ class ElevenLabsService {
           }
         }, 30000);
 
-        // Send user message
-        const userMessage = {
-          type: 'user_message',
-          text: message
+        // Function to send the message
+        const sendUserMessage = () => {
+          const userMessage = {
+            type: 'user_message',
+            text: message
+          };
+
+          wsConnection.ws.send(JSON.stringify(userMessage));
+          console.log('Sent message to ElevenLabs:', message);
+
+          // Set connection timeout to close if inactive
+          wsConnection.timeout = setTimeout(() => {
+            console.log('Closing inactive WebSocket for:', phoneNumber);
+            this.closeConnection(phoneNumber);
+          }, this.connectionTimeout);
         };
 
-        wsConnection.ws.send(JSON.stringify(userMessage));
-        console.log('Sent message to ElevenLabs:', message);
-
-        // Set connection timeout to close if inactive
-        wsConnection.timeout = setTimeout(() => {
-          console.log('Closing inactive WebSocket for:', phoneNumber);
-          this.closeConnection(phoneNumber);
-        }, this.connectionTimeout);
+        // Send message if connection is already open, otherwise queue it
+        if (wsConnection.ws.readyState === WebSocket.OPEN) {
+          sendUserMessage();
+        } else {
+          // Queue the message to be sent when connection opens
+          wsConnection.ws.once('open', sendUserMessage);
+        }
 
       } catch (error) {
         console.error('ElevenLabs service error:', error);
@@ -118,10 +128,15 @@ class ElevenLabsService {
             }
             break;
 
+          case 'agent_chat_response_part':
           case 'agent_response':
-            const text = response.agent_response_event?.agent_response;
+            // Handle both streaming parts and complete responses
+            const text = response.agent_response_event?.agent_response
+              || response.agent_chat_response_part_event?.text
+              || response.text;
+
             if (text) {
-              console.log('Agent response:', text.substring(0, 100));
+              console.log('Agent response chunk:', text.substring(0, 100));
 
               // Find the most recent pending response for this phone number
               let latestPending = null;
@@ -138,9 +153,13 @@ class ElevenLabsService {
               if (latestPending) {
                 latestPending.response += text;
 
-                // Resolve and remove this pending response
-                this.pendingResponses.delete(latestId);
-                latestPending.resolve(latestPending.response);
+                // For agent_response (complete), resolve immediately
+                // For agent_chat_response_part (streaming), accumulate
+                if (response.type === 'agent_response') {
+                  this.pendingResponses.delete(latestId);
+                  latestPending.resolve(latestPending.response);
+                  console.log('Complete response received, length:', latestPending.response.length);
+                }
               }
             }
             break;
