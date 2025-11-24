@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const twilioTools = require('../tools/twilioTools');
 
 class ElevenLabsService {
   constructor() {
@@ -12,8 +13,8 @@ class ElevenLabsService {
     // Store pending responses
     this.pendingResponses = new Map();
 
-    // Connection timeout (close after 5 minutes of inactivity)
-    this.connectionTimeout = 5 * 60 * 1000;
+    // Connection timeout (close after 1 minute of inactivity to reset context)
+    this.connectionTimeout = 60 * 1000; // 1 minute
   }
 
   async sendMessage(phoneNumber, message) {
@@ -52,20 +53,30 @@ class ElevenLabsService {
           }
         }, 30000);
 
-        // Send user message
-        const userMessage = {
-          type: 'user_message',
-          text: message
+        // Function to send the message
+        const sendUserMessage = () => {
+          const userMessage = {
+            type: 'user_message',
+            text: message
+          };
+
+          wsConnection.ws.send(JSON.stringify(userMessage));
+          console.log('Sent message to ElevenLabs:', message);
+
+          // Set connection timeout to close if inactive (1 minute)
+          wsConnection.timeout = setTimeout(() => {
+            console.log('⏱️  1 minute inactivity - Closing WebSocket and resetting context for:', phoneNumber);
+            this.closeConnection(phoneNumber);
+          }, this.connectionTimeout);
         };
 
-        wsConnection.ws.send(JSON.stringify(userMessage));
-        console.log('Sent message to ElevenLabs:', message);
-
-        // Set connection timeout to close if inactive
-        wsConnection.timeout = setTimeout(() => {
-          console.log('Closing inactive WebSocket for:', phoneNumber);
-          this.closeConnection(phoneNumber);
-        }, this.connectionTimeout);
+        // Send message if connection is already open, otherwise queue it
+        if (wsConnection.ws.readyState === WebSocket.OPEN) {
+          sendUserMessage();
+        } else {
+          // Queue the message to be sent when connection opens
+          wsConnection.ws.once('open', sendUserMessage);
+        }
 
       } catch (error) {
         console.error('ElevenLabs service error:', error);
@@ -118,10 +129,15 @@ class ElevenLabsService {
             }
             break;
 
+          case 'agent_chat_response_part':
           case 'agent_response':
-            const text = response.agent_response_event?.agent_response;
+            // Handle both streaming parts and complete responses
+            const text = response.agent_response_event?.agent_response
+              || response.agent_chat_response_part_event?.text
+              || response.text;
+
             if (text) {
-              console.log('Agent response:', text.substring(0, 100));
+              console.log('Agent response chunk:', text.substring(0, 100));
 
               // Find the most recent pending response for this phone number
               let latestPending = null;
@@ -138,9 +154,13 @@ class ElevenLabsService {
               if (latestPending) {
                 latestPending.response += text;
 
-                // Resolve and remove this pending response
-                this.pendingResponses.delete(latestId);
-                latestPending.resolve(latestPending.response);
+                // For agent_response (complete), resolve immediately
+                // For agent_chat_response_part (streaming), accumulate
+                if (response.type === 'agent_response') {
+                  this.pendingResponses.delete(latestId);
+                  latestPending.resolve(latestPending.response);
+                  console.log('Complete response received, length:', latestPending.response.length);
+                }
               }
             }
             break;
@@ -166,6 +186,39 @@ class ElevenLabsService {
                 latestPending.response = corrected;
               }
             }
+            break;
+
+          case 'client_tool_call':
+            // Handle tool calls from the agent
+            const toolCall = response.client_tool_call;
+            console.log('🔧 Tool call received:', toolCall.tool_name);
+
+            // Execute the tool with user's phone number as context
+            twilioTools.executeTool(
+              toolCall.tool_name,
+              toolCall.parameters,
+              phoneNumber
+            ).then(result => {
+              // Send tool result back to ElevenLabs
+              const toolResult = {
+                type: 'client_tool_result',
+                tool_call_id: toolCall.tool_call_id,
+                result: JSON.stringify(result),
+                is_error: !result.success
+              };
+
+              ws.send(JSON.stringify(toolResult));
+              console.log('✅ Tool result sent:', result.success ? 'success' : 'failed');
+            }).catch(error => {
+              console.error('❌ Tool execution error:', error);
+              // Send error result
+              ws.send(JSON.stringify({
+                type: 'client_tool_result',
+                tool_call_id: toolCall.tool_call_id,
+                result: JSON.stringify({ success: false, error: error.message }),
+                is_error: true
+              }));
+            });
             break;
 
           case 'ping':
@@ -234,9 +287,11 @@ class ElevenLabsService {
         clearTimeout(connection.timeout);
       }
       if (connection.ws.readyState === WebSocket.OPEN) {
+        console.log('Closing WebSocket connection for:', phoneNumber);
         connection.ws.close();
       }
       this.connections.delete(phoneNumber);
+      console.log('✅ Context reset for:', phoneNumber);
     }
   }
 
