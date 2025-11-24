@@ -12,8 +12,8 @@ class ElevenLabsService {
     // Store pending responses
     this.pendingResponses = new Map();
 
-    // Connection timeout (close after 5 minutes of inactivity)
-    this.connectionTimeout = 5 * 60 * 1000;
+    // Connection timeout (close after 1 minute of inactivity to reset context)
+    this.connectionTimeout = 60 * 1000; // 1 minute
   }
 
   async sendMessage(phoneNumber, message) {
@@ -62,9 +62,9 @@ class ElevenLabsService {
           wsConnection.ws.send(JSON.stringify(userMessage));
           console.log('Sent message to ElevenLabs:', message);
 
-          // Set connection timeout to close if inactive
+          // Set connection timeout to close if inactive (1 minute)
           wsConnection.timeout = setTimeout(() => {
-            console.log('Closing inactive WebSocket for:', phoneNumber);
+            console.log('⏱️  1 minute inactivity - Closing WebSocket and resetting context for:', phoneNumber);
             this.closeConnection(phoneNumber);
           }, this.connectionTimeout);
         };
@@ -253,9 +253,11 @@ class ElevenLabsService {
         clearTimeout(connection.timeout);
       }
       if (connection.ws.readyState === WebSocket.OPEN) {
+        console.log('Closing WebSocket connection for:', phoneNumber);
         connection.ws.close();
       }
       this.connections.delete(phoneNumber);
+      console.log('✅ Context reset for:', phoneNumber);
     }
   }
 
