@@ -1,0 +1,81 @@
+<%- include('header', { title: 'Dashboard - WhatsApp Bot Admin', showLogout: true }) %>
+
+<div class="container">
+  <div class="dashboard">
+    <h2>Dashboard</h2>
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-title">Total Conversations</div>
+        <div class="stat-value"><%= stats.totalConversations %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Active Conversations</div>
+        <div class="stat-value"><%= stats.activeConversations %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Total Messages</div>
+        <div class="stat-value"><%= stats.totalMessages %></div>
+      </div>
+    </div>
+
+    <!-- Conversations List -->
+    <div class="conversations-section">
+      <h3>Recent Conversations</h3>
+
+      <% if (conversations.length === 0) { %>
+        <div class="empty-state">
+          <p>No conversations yet. Waiting for incoming messages...</p>
+        </div>
+      <% } else { %>
+        <div class="conversations-list">
+          <% conversations.forEach(conversation => { %>
+            <div class="conversation-card">
+              <div class="conversation-header">
+                <div class="conversation-info">
+                  <h4><%= conversation.userName %></h4>
+                  <p class="phone-number"><%= conversation.phoneNumber %></p>
+                </div>
+                <div class="conversation-meta">
+                  <span class="timestamp">
+                    <%= moment(conversation.lastMessageAt).fromNow() %>
+                  </span>
+                  <span class="badge badge-<%= conversation.status %>">
+                    <%= conversation.status %>
+                  </span>
+                </div>
+              </div>
+
+              <div class="conversation-preview">
+                <% if (conversation.messages.length > 0) { %>
+                  <% const lastMessage = conversation.messages[conversation.messages.length - 1]; %>
+                  <p>
+                    <strong><%= lastMessage.role === 'user' ? conversation.userName : 'Bot' %>:</strong>
+                    <%= lastMessage.content.substring(0, 100) %><%= lastMessage.content.length > 100 ? '...' : '' %>
+                  </p>
+                <% } %>
+              </div>
+
+              <div class="conversation-footer">
+                <span class="message-count">
+                  <%= conversation.metadata.totalMessages %> messages
+                </span>
+                <div class="conversation-actions">
+                  <a href="/admin/conversation/<%= conversation._id %>" class="btn btn-sm btn-primary">
+                    View Details
+                  </a>
+                  <form action="/admin/conversation/<%= conversation._id %>/delete" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this conversation?');">
+                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<%- include('footer') %>

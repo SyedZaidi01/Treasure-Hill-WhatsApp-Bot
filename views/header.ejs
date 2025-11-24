@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title || 'WhatsApp Bot Admin' %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-brand">
+        <h1>WhatsApp Bot Admin</h1>
+      </div>
+      <% if (typeof showLogout !== 'undefined' && showLogout) { %>
+      <div class="nav-menu">
+        <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+        <a href="/admin/logout" class="nav-link">Logout</a>
+      </div>
+      <% } %>
+    </div>
+  </nav>
+  <main class="main-content">
