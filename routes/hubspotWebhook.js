@@ -40,13 +40,13 @@ async function fetchAndSaveContact(contactId) {
             console.error('   ❌ No HUBSPOT_ACCESS_TOKEN configured');
             return;
         }
-        
+
         const properties = [
             'email', 'phone', 'lastname', 'firstname', 'mobilephone',
             'hs_object_id', 'community_project_name', 'community_preference',
             'createdate', 'lastmodifieddate', 'hs_lead_status', 'lifecyclestage'
         ].join(',');
-        
+
         const response = await fetch(
             `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}?properties=${properties}`,
             {
@@ -56,15 +56,22 @@ async function fetchAndSaveContact(contactId) {
                 }
             }
         );
-        
+
         if (!response.ok) {
             console.error(`   ❌ Failed to fetch contact ${contactId}: ${response.status}`);
             return;
         }
-        
+
         const contact = await response.json();
         const props = contact.properties;
-        
+
+        console.log(`   📋 Creating lead with data:`, {
+            hubspotId: contactId.toString(),
+            firstName: props.firstname,
+            lastName: props.lastname,
+            email: props.email
+        });
+
         // Always create new lead - no duplicate checking
         const newLead = new Lead({
             hubspotId: contactId.toString(),
@@ -80,12 +87,26 @@ async function fetchAndSaveContact(contactId) {
             status: 'new',
             rawData: props
         });
-        
-        await newLead.save();
-        console.log(`   ✅ New lead saved: ${props.firstname} ${props.lastname} (${props.email})`);
-        
+
+        const savedLead = await newLead.save();
+        console.log(`   ✅ New lead saved with ID: ${savedLead._id}`);
+        console.log(`   ✅ Lead details: ${props.firstname} ${props.lastname} (${props.email})`);
+
+        // Verify the lead was saved by querying it back
+        const verifyLead = await Lead.findById(savedLead._id);
+        if (verifyLead) {
+            console.log(`   ✅ Lead verified in database: ${verifyLead._id}`);
+        } else {
+            console.error(`   ❌ Lead NOT found after save! ID: ${savedLead._id}`);
+        }
+
+        // Log total leads count
+        const totalLeads = await Lead.countDocuments();
+        console.log(`   📊 Total leads in database: ${totalLeads}`);
+
     } catch (error) {
         console.error(`   ❌ Error saving lead ${contactId}:`, error.message);
+        console.error(`   ❌ Full error:`, error);
     }
 }
 
