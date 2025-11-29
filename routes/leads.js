@@ -14,6 +14,45 @@ const checkAuth = (req, res, next) => {
 router.use(checkAuth);
 
 /**
+ * GET /admin/leads/debug - Debug endpoint to check database state
+ */
+router.get('/debug', async (req, res) => {
+  try {
+    const totalLeads = await Lead.countDocuments();
+    const allLeads = await Lead.find().sort({ createdAt: -1 }).limit(10);
+    const stats = await Lead.getStats();
+
+    console.log('=== LEADS DEBUG ===');
+    console.log('Total leads in database:', totalLeads);
+    console.log('Stats:', JSON.stringify(stats, null, 2));
+    console.log('Latest leads:', allLeads.map(l => ({
+      id: l._id,
+      name: l.fullName,
+      email: l.email,
+      status: l.status,
+      createdAt: l.createdAt
+    })));
+
+    res.json({
+      totalLeads,
+      stats,
+      latestLeads: allLeads.map(l => ({
+        id: l._id,
+        hubspotId: l.hubspotId,
+        name: `${l.firstName} ${l.lastName}`,
+        email: l.email,
+        status: l.status,
+        source: l.source,
+        createdAt: l.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /admin/leads - View all leads dashboard
  */
 router.get('/', async (req, res) => {
@@ -28,10 +67,15 @@ router.get('/', async (req, res) => {
       query.status = statusFilter;
     }
 
+    console.log('Loading leads page - Query:', JSON.stringify(query));
+    console.log('Total documents:', await Lead.countDocuments());
+
     const leads = await Lead.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
+
+    console.log('Found leads:', leads.length);
 
     const stats = await Lead.getStats();
     const totalLeads = await Lead.countDocuments(query);
