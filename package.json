@@ -1,7 +1,7 @@
 {
   "name": "treasure-hill-whatsapp-bot",
   "version": "1.0.0",
-  "description": "WhatsApp chatbot using Twilio and ElevenLabs conversational AI with Zapier HubSpot integration",
+  "description": "WhatsApp chatbot using Twilio and ElevenLabs conversational AI with HubSpot integration",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,7 +14,7 @@
     "elevenlabs",
     "mongodb",
     "hubspot",
-    "zapier"
+    "hubspot-webhooks"
   ],
   "author": "Syed Muhammad Ali Raza Zaidi",
   "license": "MIT",

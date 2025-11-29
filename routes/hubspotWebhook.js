@@ -7,17 +7,90 @@ router.post('/', async (req, res) => {
     try {
         // HubSpot expects a 200 response quickly
         res.status(200).send('OK');
-        
+
+        // Log raw payload for debugging
+        console.log(`\n⚡ [${new Date().toISOString()}] HubSpot Webhook received`);
+        console.log('   📦 Raw payload:', JSON.stringify(req.body, null, 2));
+
         const events = Array.isArray(req.body) ? req.body : [req.body];
-        
-        console.log(`\n⚡ [${new Date().toISOString()}] HubSpot Webhook received ${events.length} event(s)`);
-        
+
+        console.log(`   📊 Processing ${events.length} event(s)`);
+
         for (const event of events) {
             await processHubSpotEvent(event);
         }
     } catch (error) {
         console.error('❌ HubSpot webhook error:', error);
         // Still return 200 to prevent HubSpot from retrying
+    }
+});
+
+// Test endpoint to verify lead saving works (POST creates a test lead)
+router.post('/test', async (req, res) => {
+    try {
+        console.log('\n🧪 Testing lead creation...');
+
+        const testLead = new Lead({
+            hubspotId: 'test-' + Date.now(),
+            firstName: 'Test',
+            lastName: 'User',
+            email: 'test-' + Date.now() + '@example.com',
+            phone: '+1234567890',
+            source: 'manual',
+            status: 'new'
+        });
+
+        const saved = await testLead.save();
+        console.log('   ✅ Test lead saved with ID:', saved._id);
+
+        // Verify it exists
+        const verify = await Lead.findById(saved._id);
+        console.log('   ✅ Verified lead exists:', !!verify);
+
+        // Count total
+        const total = await Lead.countDocuments();
+        console.log('   📊 Total leads in database:', total);
+
+        res.json({
+            success: true,
+            leadId: saved._id,
+            verified: !!verify,
+            totalLeads: total
+        });
+    } catch (error) {
+        console.error('❌ Test lead error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Debug endpoint to check database state (GET - no auth required)
+router.get('/debug', async (req, res) => {
+    try {
+        const mongoose = require('mongoose');
+        const total = await Lead.countDocuments();
+        const latest = await Lead.find().sort({ createdAt: -1 }).limit(5);
+
+        console.log('\n🔍 HubSpot Webhook Debug');
+        console.log('   MongoDB state:', mongoose.connection.readyState);
+        console.log('   Database name:', mongoose.connection.name);
+        console.log('   Total leads:', total);
+
+        res.json({
+            mongoState: mongoose.connection.readyState,
+            mongoStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
+            databaseName: mongoose.connection.name,
+            totalLeads: total,
+            latestLeads: latest.map(l => ({
+                id: l._id,
+                hubspotId: l.hubspotId,
+                name: `${l.firstName} ${l.lastName}`,
+                email: l.email,
+                createdAt: l.createdAt
+            }))
+        });
+    } catch (error) {
+        console.error('Debug error:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 

@@ -1,13 +1,13 @@
 # Treasure Hill WhatsApp Bot
 
-A WhatsApp chatbot that connects Twilio WhatsApp Business API with ElevenLabs conversational AI. Integrates with HubSpot via Zapier webhooks for lead management.
+A WhatsApp chatbot that connects Twilio WhatsApp Business API with ElevenLabs conversational AI. Integrates with HubSpot via webhooks for lead management.
 
 ## Features
 
 - 🤖 **AI-Powered Conversations**: ElevenLabs conversational AI
 - 💬 **WhatsApp Integration**: Twilio WhatsApp Business API
 - 📊 **Admin Dashboard**: Monitor conversations and leads
-- 🔗 **HubSpot Integration**: Receive leads via Zapier webhooks
+- 🔗 **HubSpot Integration**: Receive leads via HubSpot webhooks
 - 💾 **MongoDB Storage**: Persistent conversation and lead history
 
 ## Quick Start
@@ -61,24 +61,22 @@ SSL_CERT_PATH=C:/ssl/certificate.crt
 | `/admin` | Admin dashboard |
 | `/admin/leads` | HubSpot leads dashboard |
 | `/webhook/whatsapp` | Twilio WhatsApp webhook |
-| `/webhook/hubspot` | Zapier/HubSpot webhook |
+| `/webhook/hubspot` | HubSpot webhook |
 | `/health` | Health check |
 
-## Zapier Integration
+## HubSpot Integration
 
-Configure your Zapier zap to POST to:
+Configure HubSpot webhook subscription to POST to:
 ```
 https://your-domain.com/webhook/hubspot
 ```
 
-With the following fields:
-- `email`
-- `firstname`
-- `lastname`
-- `phone`
-- `mobile_phone`
-- `objectId`
-- `project_name`
+### Required Environment Variable
+```env
+HUBSPOT_ACCESS_TOKEN=your-private-app-access-token
+```
+
+The webhook handles `contact.creation` events and fetches full contact details using the HubSpot API.
 
 ## License
 
