@@ -68,7 +68,6 @@ exports.handleIncomingMessage = async (req, res) => {
 };
 
 exports.handleStatus = (req, res) => {
-  // Handle message status callbacks
   console.log('Message status:', req.body);
   res.sendStatus(200);
 };

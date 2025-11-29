@@ -5,11 +5,12 @@ class HubSpotPoller {
   constructor() {
     this.accessToken = process.env.HUBSPOT_ACCESS_TOKEN;
     this.baseUrl = 'https://api.hubapi.com';
-    this.pollingInterval = 10 * 60 * 1000; // 10 minutes
+    this.pollingInterval = 5 * 60 * 1000; // 5 minutes
     this.isRunning = false;
     this.lastPollTime = null;
+    this.intervalId = null;
     
-    // Properties to fetch (matching your current webhook)
+    // Properties to fetch from HubSpot contacts
     this.properties = [
       'email',
       'phone',
@@ -17,7 +18,8 @@ class HubSpotPoller {
       'firstname',
       'mobilephone',
       'hs_object_id',
-      'community_project_name', // May need adjustment based on your actual property name
+      'community_project_name',
+      'community_preference',
       'createdate',
       'lastmodifieddate',
       'hs_lead_status',
@@ -30,25 +32,27 @@ class HubSpotPoller {
    */
   start() {
     if (!this.accessToken) {
-      console.error('❌ HUBSPOT_ACCESS_TOKEN not configured - HubSpot polling disabled');
-      return;
+      console.log('❌ HUBSPOT_ACCESS_TOKEN not configured');
+      return false;
     }
 
     if (this.isRunning) {
       console.log('⚠️  HubSpot poller already running');
-      return;
+      return false;
     }
 
     this.isRunning = true;
-    console.log('🔄 HubSpot Poller started - checking every 10 minutes');
+    console.log('🔄 HubSpot Poller started - checking every 5 minutes');
 
     // Run immediately on start
     this.poll();
 
-    // Then run every 10 minutes
+    // Then run every 5 minutes
     this.intervalId = setInterval(() => {
       this.poll();
     }, this.pollingInterval);
+
+    return true;
   }
 
   /**
@@ -67,23 +71,23 @@ class HubSpotPoller {
    * Poll HubSpot for new contacts
    */
   async poll() {
-    try {
-      console.log(`\n📡 [${new Date().toISOString()}] Polling HubSpot for new contacts...`);
+    if (!this.accessToken) {
+      return;
+    }
 
-      // Get the last processed timestamp from database
-      const lastProcessed = await this.getLastProcessedTime();
-      
-      // Fetch contacts created or modified after last poll
-      const contacts = await this.fetchRecentContacts(lastProcessed);
+    try {
+      console.log(`\n📡 [${new Date().toISOString()}] Polling HubSpot for contacts...`);
+
+      const contacts = await this.fetchRecentContacts();
 
       if (contacts.length === 0) {
         console.log('   No new contacts found');
+        this.lastPollTime = new Date();
         return;
       }
 
       console.log(`   Found ${contacts.length} contact(s) to process`);
 
-      // Process each contact
       let newCount = 0;
       let updatedCount = 0;
       let skippedCount = 0;
@@ -96,15 +100,15 @@ class HubSpotPoller {
       }
 
       console.log(`   ✅ Processed: ${newCount} new, ${updatedCount} updated, ${skippedCount} skipped`);
-
-      // Update last poll time
       this.lastPollTime = new Date();
 
     } catch (error) {
       console.error('❌ HubSpot polling error:', error.message);
       if (error.response) {
         console.error('   Status:', error.response.status);
-        console.error('   Data:', JSON.stringify(error.response.data));
+        if (error.response.status === 401) {
+          console.error('   ⚠️  Invalid or expired access token - check your HUBSPOT_ACCESS_TOKEN');
+        }
       }
     }
   }
@@ -112,13 +116,14 @@ class HubSpotPoller {
   /**
    * Fetch recent contacts from HubSpot
    */
-  async fetchRecentContacts(since) {
+  async fetchRecentContacts() {
     const allContacts = [];
     let after = undefined;
     let hasMore = true;
 
-    // Calculate the filter date (use last poll time or last 24 hours for first run)
-    const filterDate = since || new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Get contacts created in the last 24 hours on first run, or since last poll
+    const lastProcessedTime = await this.getLastProcessedTime();
+    const filterDate = lastProcessedTime || new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     while (hasMore) {
       const response = await axios.get(`${this.baseUrl}/crm/v3/objects/contacts`, {
@@ -129,20 +134,19 @@ class HubSpotPoller {
         params: {
           limit: 100,
           after: after,
-          properties: this.properties.join(','),
-          // Sort by create date descending to get newest first
-          sorts: JSON.stringify([{ propertyName: 'createdate', direction: 'DESCENDING' }])
+          properties: this.properties.join(',')
         }
       });
 
       const { results, paging } = response.data;
 
-      // Filter contacts created/modified after our last poll
+      // Filter contacts created/modified after our filter date
       for (const contact of results) {
         const createDate = new Date(contact.properties.createdate);
-        const modifiedDate = new Date(contact.properties.lastmodifieddate);
+        const modifiedDate = contact.properties.lastmodifieddate 
+          ? new Date(contact.properties.lastmodifieddate) 
+          : createDate;
         
-        // Include if created or modified after our filter date
         if (createDate > filterDate || modifiedDate > filterDate) {
           allContacts.push(contact);
         }
@@ -155,7 +159,7 @@ class HubSpotPoller {
         hasMore = false;
       }
 
-      // Safety limit - don't fetch more than 500 contacts in one poll
+      // Safety limit
       if (allContacts.length >= 500) {
         console.log('   ⚠️  Reached 500 contact limit for this poll');
         hasMore = false;
@@ -171,39 +175,45 @@ class HubSpotPoller {
   async processContact(contact) {
     try {
       const hubspotId = contact.id;
-      const properties = contact.properties;
+      const props = contact.properties;
 
       // Check if we already have this contact
       const existingLead = await Lead.findOne({ hubspotId: hubspotId });
 
-      // Prepare lead data (matching your webhook structure)
+      // Prepare lead data
       const leadData = {
         hubspotId: hubspotId,
-        objectId: hubspotId, // Same as hubspotId for compatibility
-        email: properties.email || '',
-        phone: properties.phone || '',
-        mobilePhone: properties.mobilephone || '',
-        firstName: properties.firstname || '',
-        lastName: properties.lastname || '',
-        projectName: properties.community_project_name || properties.project_name || '',
-        leadStatus: properties.hs_lead_status || '',
-        lifecycleStage: properties.lifecyclestage || '',
-        createdAt: new Date(properties.createdate),
-        updatedAt: new Date(properties.lastmodifieddate),
-        source: 'hubspot_poll',
-        rawData: properties
+        objectId: hubspotId,
+        email: props.email || '',
+        phone: props.phone || '',
+        mobilePhone: props.mobilephone || '',
+        firstName: props.firstname || '',
+        lastName: props.lastname || '',
+        projectName: props.community_project_name || props.community_preference || '',
+        leadStatus: props.hs_lead_status || '',
+        lifecycleStage: props.lifecyclestage || '',
+        source: 'hubspot_api',
+        rawData: props
       };
 
       if (existingLead) {
         // Check if actually modified
         const existingModified = existingLead.updatedAt?.getTime() || 0;
-        const newModified = leadData.updatedAt.getTime();
+        const newModified = props.lastmodifieddate 
+          ? new Date(props.lastmodifieddate).getTime() 
+          : Date.now();
 
         if (newModified > existingModified) {
-          // Update existing lead
+          // Update existing lead but preserve processing status
           await Lead.findByIdAndUpdate(existingLead._id, {
             ...leadData,
-            processedAt: existingLead.processedAt // Keep original processed time
+            updatedAt: new Date(),
+            // Preserve these fields
+            status: existingLead.status,
+            callStatus: existingLead.callStatus,
+            callAttempts: existingLead.callAttempts,
+            callNotes: existingLead.callNotes,
+            processedAt: existingLead.processedAt
           });
           return 'updated';
         } else {
@@ -213,11 +223,14 @@ class HubSpotPoller {
         // Create new lead
         const newLead = new Lead({
           ...leadData,
-          processedAt: null, // Not yet processed/called
-          status: 'new'
+          status: 'new',
+          callStatus: 'pending',
+          callAttempts: 0,
+          createdAt: props.createdate ? new Date(props.createdate) : new Date(),
+          updatedAt: new Date()
         });
         await newLead.save();
-        console.log(`   📥 New lead: ${leadData.firstName} ${leadData.lastName} (${leadData.email})`);
+        console.log(`   📥 New lead: ${leadData.firstName} ${leadData.lastName} (${leadData.email || leadData.phone || 'no contact'})`);
         return 'new';
       }
 
@@ -232,18 +245,11 @@ class HubSpotPoller {
    */
   async getLastProcessedTime() {
     try {
-      // Find the most recently updated lead from HubSpot polling
-      const lastLead = await Lead.findOne({ source: 'hubspot_poll' })
+      const lastLead = await Lead.findOne({ source: 'hubspot_api' })
         .sort({ updatedAt: -1 })
         .limit(1);
 
-      if (lastLead) {
-        return lastLead.updatedAt;
-      }
-
-      // If no leads yet, return null (will use 24 hour default)
-      return null;
-
+      return lastLead ? lastLead.updatedAt : null;
     } catch (error) {
       console.error('Error getting last processed time:', error.message);
       return null;
@@ -251,11 +257,16 @@ class HubSpotPoller {
   }
 
   /**
-   * Manual trigger for immediate poll (useful for testing)
+   * Manual trigger for immediate poll
    */
   async triggerPoll() {
+    if (!this.accessToken) {
+      console.log('⚠️  Cannot poll - HUBSPOT_ACCESS_TOKEN not configured');
+      return { success: false, error: 'No access token' };
+    }
     console.log('🔄 Manual poll triggered');
     await this.poll();
+    return { success: true };
   }
 
   /**
@@ -274,15 +285,20 @@ class HubSpotPoller {
    * Test HubSpot connection
    */
   async testConnection() {
+    if (!this.accessToken) {
+      return {
+        success: false,
+        message: 'HUBSPOT_ACCESS_TOKEN not configured'
+      };
+    }
+
     try {
       const response = await axios.get(`${this.baseUrl}/crm/v3/objects/contacts`, {
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         },
-        params: {
-          limit: 1
-        }
+        params: { limit: 1 }
       });
 
       return {
@@ -295,8 +311,7 @@ class HubSpotPoller {
       return {
         success: false,
         message: error.message,
-        status: error.response?.status,
-        error: error.response?.data
+        status: error.response?.status
       };
     }
   }

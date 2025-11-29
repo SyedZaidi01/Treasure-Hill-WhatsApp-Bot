@@ -6,21 +6,14 @@ class ElevenLabsService {
     this.apiKey = process.env.ELEVENLABS_API_KEY;
     this.agentId = process.env.ELEVENLABS_AGENT_ID;
     this.wsBaseUrl = 'wss://api.elevenlabs.io';
-
-    // Store WebSocket connections for each phone number
     this.connections = new Map();
-
-    // Store pending responses
     this.pendingResponses = new Map();
-
-    // Connection timeout (close after 1 minute of inactivity to reset context)
     this.connectionTimeout = 60 * 1000; // 1 minute
   }
 
   async sendMessage(phoneNumber, message) {
     return new Promise((resolve, reject) => {
       try {
-        // Get or create WebSocket connection for this phone number
         let wsConnection = this.connections.get(phoneNumber);
 
         if (!wsConnection || wsConnection.ws.readyState !== WebSocket.OPEN) {
@@ -29,13 +22,11 @@ class ElevenLabsService {
           this.connections.set(phoneNumber, wsConnection);
         } else {
           console.log('Reusing existing WebSocket connection for:', phoneNumber);
-          // Clear existing timeout
           if (wsConnection.timeout) {
             clearTimeout(wsConnection.timeout);
           }
         }
 
-        // Store this pending response
         const responseId = Date.now();
         this.pendingResponses.set(responseId, {
           resolve,
@@ -44,7 +35,6 @@ class ElevenLabsService {
           phoneNumber
         });
 
-        // Set timeout for this specific message
         const messageTimeout = setTimeout(() => {
           const pending = this.pendingResponses.get(responseId);
           if (pending) {
@@ -53,7 +43,6 @@ class ElevenLabsService {
           }
         }, 30000);
 
-        // Function to send the message
         const sendUserMessage = () => {
           const userMessage = {
             type: 'user_message',
@@ -63,18 +52,15 @@ class ElevenLabsService {
           wsConnection.ws.send(JSON.stringify(userMessage));
           console.log('Sent message to ElevenLabs:', message);
 
-          // Set connection timeout to close if inactive (1 minute)
           wsConnection.timeout = setTimeout(() => {
-            console.log('⏱️  1 minute inactivity - Closing WebSocket and resetting context for:', phoneNumber);
+            console.log('⏱️  1 minute inactivity - Closing WebSocket for:', phoneNumber);
             this.closeConnection(phoneNumber);
           }, this.connectionTimeout);
         };
 
-        // Send message if connection is already open, otherwise queue it
         if (wsConnection.ws.readyState === WebSocket.OPEN) {
           sendUserMessage();
         } else {
-          // Queue the message to be sent when connection opens
           wsConnection.ws.once('open', sendUserMessage);
         }
 
@@ -106,7 +92,6 @@ class ElevenLabsService {
     ws.on('open', () => {
       console.log('WebSocket connected for:', phoneNumber);
 
-      // Send initiation message
       const initiationMessage = {
         type: 'conversation_initiation_client_data'
       };
@@ -120,7 +105,6 @@ class ElevenLabsService {
         const response = JSON.parse(data.toString());
         console.log('Received from ElevenLabs:', response.type);
 
-        // Handle different message types
         switch (response.type) {
           case 'conversation_initiation_metadata':
             connection.conversationId = response.conversation_initiation_metadata_event?.conversation_id;
@@ -131,7 +115,6 @@ class ElevenLabsService {
 
           case 'agent_chat_response_part':
           case 'agent_response':
-            // Handle both streaming parts and complete responses
             const text = response.agent_response_event?.agent_response
               || response.agent_chat_response_part_event?.text
               || response.text;
@@ -139,7 +122,6 @@ class ElevenLabsService {
             if (text) {
               console.log('Agent response chunk:', text.substring(0, 100));
 
-              // Find the most recent pending response for this phone number
               let latestPending = null;
               let latestId = null;
               for (const [id, pending] of this.pendingResponses.entries()) {
@@ -154,8 +136,6 @@ class ElevenLabsService {
               if (latestPending) {
                 latestPending.response += text;
 
-                // For agent_response (complete), resolve immediately
-                // For agent_chat_response_part (streaming), accumulate
                 if (response.type === 'agent_response') {
                   this.pendingResponses.delete(latestId);
                   latestPending.resolve(latestPending.response);
@@ -170,7 +150,6 @@ class ElevenLabsService {
             if (corrected) {
               console.log('Agent response corrected:', corrected.substring(0, 100));
 
-              // Update the most recent pending response
               let latestPending = null;
               let latestId = null;
               for (const [id, pending] of this.pendingResponses.entries()) {
@@ -189,17 +168,14 @@ class ElevenLabsService {
             break;
 
           case 'client_tool_call':
-            // Handle tool calls from the agent
             const toolCall = response.client_tool_call;
             console.log('🔧 Tool call received:', toolCall.tool_name);
 
-            // Execute the tool with user's phone number as context
             twilioTools.executeTool(
               toolCall.tool_name,
               toolCall.parameters,
               phoneNumber
             ).then(result => {
-              // Send tool result back to ElevenLabs
               const toolResult = {
                 type: 'client_tool_result',
                 tool_call_id: toolCall.tool_call_id,
@@ -211,7 +187,6 @@ class ElevenLabsService {
               console.log('✅ Tool result sent:', result.success ? 'success' : 'failed');
             }).catch(error => {
               console.error('❌ Tool execution error:', error);
-              // Send error result
               ws.send(JSON.stringify({
                 type: 'client_tool_result',
                 tool_call_id: toolCall.tool_call_id,
@@ -222,7 +197,6 @@ class ElevenLabsService {
             break;
 
           case 'ping':
-            // Respond to ping with pong
             ws.send(JSON.stringify({
               type: 'pong',
               event_id: response.ping_event?.event_id
@@ -234,7 +208,7 @@ class ElevenLabsService {
             break;
 
           case 'audio':
-            // Audio response (we're only using text, so ignore)
+            // Audio response - we only use text
             break;
 
           default:
@@ -248,7 +222,6 @@ class ElevenLabsService {
     ws.on('error', (error) => {
       console.error('WebSocket error for', phoneNumber, ':', error.message);
 
-      // Reject all pending responses for this connection
       for (const [id, pending] of this.pendingResponses.entries()) {
         if (pending.phoneNumber === phoneNumber) {
           pending.reject(new Error(`WebSocket error: ${error.message}`));
@@ -262,7 +235,6 @@ class ElevenLabsService {
     ws.on('close', () => {
       console.log('WebSocket closed for:', phoneNumber);
 
-      // Clean up pending responses
       for (const [id, pending] of this.pendingResponses.entries()) {
         if (pending.phoneNumber === phoneNumber) {
           if (pending.response) {
@@ -295,12 +267,10 @@ class ElevenLabsService {
     }
   }
 
-  // Clear conversation session (useful for resetting context)
   clearSession(phoneNumber) {
     this.closeConnection(phoneNumber);
   }
 
-  // Get active session count
   getActiveSessionCount() {
     return this.connections.size;
   }

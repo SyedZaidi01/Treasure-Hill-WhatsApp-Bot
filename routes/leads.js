@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead');
-const hubspotPoller = require('../services/hubspotPoller');
 const moment = require('moment');
 
-// Middleware to check authentication (reuse from admin)
+// Middleware to check authentication
 const checkAuth = (req, res, next) => {
   if (req.session.isAuthenticated) {
     return next();
@@ -12,7 +11,6 @@ const checkAuth = (req, res, next) => {
   res.redirect('/admin/login');
 };
 
-// Apply auth to all routes
 router.use(checkAuth);
 
 /**
@@ -25,30 +23,23 @@ router.get('/', async (req, res) => {
     const skip = (page - 1) * limit;
     const statusFilter = req.query.status || '';
 
-    // Build query
     const query = {};
     if (statusFilter) {
       query.status = statusFilter;
     }
 
-    // Get leads
     const leads = await Lead.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // Get stats
     const stats = await Lead.getStats();
     const totalLeads = await Lead.countDocuments(query);
     const totalPages = Math.ceil(totalLeads / limit);
 
-    // Get poller status
-    const pollerStatus = hubspotPoller.getStatus();
-
     res.render('leads', {
       leads,
       stats,
-      pollerStatus,
       currentPage: page,
       totalPages,
       totalLeads,
@@ -140,58 +131,6 @@ router.post('/:id/delete', async (req, res) => {
   } catch (error) {
     console.error('Error deleting lead:', error);
     res.status(500).send('Error deleting lead');
-  }
-});
-
-/**
- * POST /admin/leads/poll - Trigger manual HubSpot poll
- */
-router.post('/poll', async (req, res) => {
-  try {
-    await hubspotPoller.triggerPoll();
-    res.redirect('/admin/leads?polled=true');
-
-  } catch (error) {
-    console.error('Error triggering poll:', error);
-    res.status(500).send('Error triggering poll');
-  }
-});
-
-/**
- * GET /admin/leads/api/test-connection - Test HubSpot connection
- */
-router.get('/api/test-connection', async (req, res) => {
-  try {
-    const result = await hubspotPoller.testConnection();
-    res.json(result);
-
-  } catch (error) {
-    res.json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * GET /admin/leads/api/stats - Get lead stats as JSON
- */
-router.get('/api/stats', async (req, res) => {
-  try {
-    const stats = await Lead.getStats();
-    const pollerStatus = hubspotPoller.getStatus();
-    
-    res.json({
-      success: true,
-      stats,
-      pollerStatus
-    });
-
-  } catch (error) {
-    res.json({
-      success: false,
-      error: error.message
-    });
   }
 });
 

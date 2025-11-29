@@ -4,8 +4,6 @@ const leadSchema = new mongoose.Schema({
   // HubSpot identifiers
   hubspotId: {
     type: String,
-    required: true,
-    unique: true,
     index: true
   },
   objectId: {
@@ -13,7 +11,7 @@ const leadSchema = new mongoose.Schema({
     index: true
   },
 
-  // Contact information (matching your webhook fields)
+  // Contact information
   email: {
     type: String,
     index: true
@@ -31,7 +29,7 @@ const leadSchema = new mongoose.Schema({
     type: String
   },
   projectName: {
-    type: String  // Community Project Name
+    type: String
   },
 
   // HubSpot metadata
@@ -50,7 +48,7 @@ const leadSchema = new mongoose.Schema({
     index: true
   },
   
-  // Call tracking (for integration with your calling system)
+  // Call tracking
   callStatus: {
     type: String,
     enum: ['pending', 'in_progress', 'completed', 'failed', 'no_answer', 'busy', 'voicemail'],
@@ -70,8 +68,8 @@ const leadSchema = new mongoose.Schema({
   // Source tracking
   source: {
     type: String,
-    enum: ['hubspot_poll', 'hubspot_webhook', 'manual', 'import'],
-    default: 'hubspot_poll'
+    enum: ['hubspot_webhook', 'hubspot_api', 'manual', 'import'],
+    default: 'hubspot_webhook'
   },
 
   // Timestamps
@@ -87,15 +85,15 @@ const leadSchema = new mongoose.Schema({
     type: Date
   },
 
-  // Store raw HubSpot data for reference
+  // Store raw data for reference
   rawData: {
     type: mongoose.Schema.Types.Mixed
   }
 }, {
-  timestamps: false // We're managing our own timestamps
+  timestamps: false
 });
 
-// Index for efficient polling queries
+// Indexes
 leadSchema.index({ source: 1, updatedAt: -1 });
 leadSchema.index({ status: 1, createdAt: -1 });
 
@@ -127,7 +125,7 @@ leadSchema.statics.getUnprocessedLeads = function(limit = 50) {
       { mobilePhone: { $exists: true, $ne: '' } }
     ]
   })
-  .sort({ createdAt: 1 }) // Oldest first
+  .sort({ createdAt: 1 })
   .limit(limit);
 };
 
@@ -164,7 +162,6 @@ leadSchema.statics.getStats = async function() {
   };
 };
 
-// Ensure virtuals are included in JSON output
 leadSchema.set('toJSON', { virtuals: true });
 leadSchema.set('toObject', { virtuals: true });
 

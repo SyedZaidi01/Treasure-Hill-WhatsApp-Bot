@@ -27,7 +27,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    secure: HTTPS_ENABLED // Use secure cookies with HTTPS
+    secure: HTTPS_ENABLED
   }
 }));
 
@@ -57,14 +57,11 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  const hubspotPoller = require('./services/hubspotPoller');
-  
   res.json({
     status: 'ok',
     https: HTTPS_ENABLED,
     port: PORT,
-    timestamp: new Date().toISOString(),
-    hubspotPoller: hubspotPoller.getStatus()
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -78,7 +75,6 @@ app.use((err, req, res, next) => {
 let server;
 
 if (HTTPS_ENABLED) {
-  // HTTPS Mode - Node.js handles SSL directly
   try {
     const privateKey = fs.readFileSync(process.env.SSL_KEY_PATH, 'utf8');
     const certificate = fs.readFileSync(process.env.SSL_CERT_PATH, 'utf8');
@@ -93,8 +89,8 @@ if (HTTPS_ENABLED) {
     server = https.createServer(credentials, app);
     console.log('HTTPS mode enabled');
 
-    // Also run HTTP server on port 80 to redirect to HTTPS (if running on port 443)
-    if (PORT === 443) {
+    // Also run HTTP server on port 80 to redirect to HTTPS
+    if (PORT === 443 || PORT === '443') {
       const httpApp = express();
       httpApp.use('*', (req, res) => {
         res.redirect('https://' + req.headers.host + req.url);
@@ -109,7 +105,6 @@ if (HTTPS_ENABLED) {
     server = http.createServer(app);
   }
 } else {
-  // HTTP Mode (default) - typically used with IIS reverse proxy
   server = http.createServer(app);
 }
 
@@ -125,14 +120,16 @@ server.listen(PORT, () => {
     console.log(`Using SSL certificates from:`);
     console.log(`  Key: ${process.env.SSL_KEY_PATH}`);
     console.log(`  Cert: ${process.env.SSL_CERT_PATH}`);
-  } else {
-    console.log('Note: Use IIS/nginx reverse proxy for HTTPS in production');
   }
   console.log('='.repeat(60));
 
-  // Start HubSpot Poller
-  const hubspotPoller = require('./services/hubspotPoller');
-  hubspotPoller.start();
+  // Verify HubSpot token is configured (needed for webhook contact fetching)
+  if (!process.env.HUBSPOT_ACCESS_TOKEN) {
+    console.log('⚠️  HUBSPOT_ACCESS_TOKEN not configured');
+    console.log('   Webhooks will not be able to fetch contact details');
+  } else {
+    console.log('✅ HubSpot webhooks ready at /webhook/hubspot');
+  }
 });
 
 module.exports = server;

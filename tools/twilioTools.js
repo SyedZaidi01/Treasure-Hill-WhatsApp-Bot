@@ -11,7 +11,6 @@ class TwilioTools {
 
   /**
    * Send SMS to a phone number
-   * This is called by the ElevenLabs agent when user requests to send a text
    */
   async sendSMS(toNumber, messageBody) {
     try {
@@ -52,7 +51,6 @@ class TwilioTools {
       case 'send_sms':
       case 'send_text':
       case 'send_message':
-        // Use the user's phone number as the "to" number
         const toNumber = parameters.to || parameters.phone_number || userPhoneNumber;
         const message = parameters.message || parameters.body || parameters.text;
 

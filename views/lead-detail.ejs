@@ -25,7 +25,6 @@
       </div>
     </div>
 
-    <!-- Contact Information -->
     <div class="detail-section">
       <h3>Contact Information</h3>
       <div class="detail-grid">
@@ -48,7 +47,6 @@
       </div>
     </div>
 
-    <!-- HubSpot Information -->
     <div class="detail-section">
       <h3>HubSpot Details</h3>
       <div class="detail-grid">
@@ -71,12 +69,11 @@
       </div>
     </div>
 
-    <!-- Timestamps -->
     <div class="detail-section">
       <h3>Timeline</h3>
       <div class="detail-grid">
         <div class="detail-item">
-          <label>Created in HubSpot</label>
+          <label>Created</label>
           <span><%= moment(lead.createdAt).format('MMMM D, YYYY [at] h:mm A') %></span>
         </div>
         <div class="detail-item">
@@ -94,7 +91,6 @@
       </div>
     </div>
 
-    <!-- Call Tracking -->
     <div class="detail-section">
       <h3>Call Tracking</h3>
       <div class="detail-grid">
@@ -109,7 +105,6 @@
       </div>
     </div>
 
-    <!-- Update Status -->
     <div class="detail-section">
       <h3>Update Status</h3>
       <form action="/admin/leads/<%= lead._id %>/status" method="POST" class="status-form">
@@ -125,7 +120,6 @@
       </form>
     </div>
 
-    <!-- Notes -->
     <div class="detail-section">
       <h3>Notes</h3>
       <form action="/admin/leads/<%= lead._id %>/notes" method="POST" class="notes-form">
@@ -134,7 +128,6 @@
       </form>
     </div>
 
-    <!-- Raw Data (Collapsible) -->
     <div class="detail-section">
       <h3>
         <button type="button" class="toggle-raw" onclick="toggleRawData()">
@@ -146,7 +139,6 @@
       </div>
     </div>
 
-    <!-- Danger Zone -->
     <div class="detail-section danger-zone">
       <h3>Danger Zone</h3>
       <form action="/admin/leads/<%= lead._id %>/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this lead? This action cannot be undone.');">
