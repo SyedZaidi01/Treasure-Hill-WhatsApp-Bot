@@ -31,6 +31,12 @@ app.use(session({
   }
 }));
 
+// Make request available in views
+app.use((req, res, next) => {
+  res.locals.req = req;
+  next();
+});
+
 // View engine setup
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -40,7 +46,9 @@ app.set('trust proxy', 1);
 
 // Routes
 app.use('/webhook', require('./routes/webhook'));
+app.use('/webhook/hubspot', require('./routes/hubspotWebhook'));
 app.use('/admin', require('./routes/admin'));
+app.use('/admin/leads', require('./routes/leads'));
 
 // Home route
 app.get('/', (req, res) => {
@@ -49,11 +57,14 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
+  const hubspotPoller = require('./services/hubspotPoller');
+  
   res.json({
     status: 'ok',
     https: HTTPS_ENABLED,
     port: PORT,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    hubspotPoller: hubspotPoller.getStatus()
   });
 });
 
@@ -108,6 +119,8 @@ server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Mode: ${HTTPS_ENABLED ? 'HTTPS (Direct)' : 'HTTP (Reverse Proxy)'}`);
   console.log(`Admin dashboard: ${HTTPS_ENABLED ? 'https' : 'http'}://localhost:${PORT}/admin`);
+  console.log(`Leads dashboard: ${HTTPS_ENABLED ? 'https' : 'http'}://localhost:${PORT}/admin/leads`);
+  
   if (HTTPS_ENABLED) {
     console.log(`Using SSL certificates from:`);
     console.log(`  Key: ${process.env.SSL_KEY_PATH}`);
@@ -116,6 +129,10 @@ server.listen(PORT, () => {
     console.log('Note: Use IIS/nginx reverse proxy for HTTPS in production');
   }
   console.log('='.repeat(60));
+
+  // Start HubSpot Poller
+  const hubspotPoller = require('./services/hubspotPoller');
+  hubspotPoller.start();
 });
 
 module.exports = server;

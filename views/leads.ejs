@@ -1,0 +1,309 @@
+<%- include('header', { title: 'HubSpot Leads - WhatsApp Bot Admin', showLogout: true }) %>
+
+<div class="container">
+  <div class="dashboard">
+    <div class="page-header">
+      <h2>HubSpot Leads</h2>
+      <div class="header-actions">
+        <form action="/admin/leads/poll" method="POST" style="display: inline;">
+          <button type="submit" class="btn btn-primary btn-sm">
+            🔄 Poll Now
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <% if (req.query.polled) { %>
+      <div class="alert alert-success">
+        ✅ HubSpot poll triggered successfully!
+      </div>
+    <% } %>
+
+    <!-- Poller Status -->
+    <div class="poller-status">
+      <span class="status-indicator <%= pollerStatus.isRunning ? 'status-running' : 'status-stopped' %>">
+        <%= pollerStatus.isRunning ? '● Running' : '○ Stopped' %>
+      </span>
+      <span class="status-detail">
+        Polling every <%= pollerStatus.pollingInterval %>
+        <% if (pollerStatus.lastPollTime) { %>
+          | Last poll: <%= moment(pollerStatus.lastPollTime).fromNow() %>
+        <% } %>
+      </span>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-title">Total Leads</div>
+        <div class="stat-value"><%= stats.total %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Today</div>
+        <div class="stat-value"><%= stats.today %></div>
+      </div>
+      <div class="stat-card stat-new">
+        <div class="stat-title">New</div>
+        <div class="stat-value"><%= stats.byStatus.new || 0 %></div>
+      </div>
+      <div class="stat-card stat-contacted">
+        <div class="stat-title">Contacted</div>
+        <div class="stat-value"><%= stats.byStatus.contacted || 0 %></div>
+      </div>
+      <div class="stat-card stat-qualified">
+        <div class="stat-title">Qualified</div>
+        <div class="stat-value"><%= stats.byStatus.qualified || 0 %></div>
+      </div>
+      <div class="stat-card stat-converted">
+        <div class="stat-title">Converted</div>
+        <div class="stat-value"><%= stats.byStatus.converted || 0 %></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-section">
+      <form action="/admin/leads" method="GET" class="filter-form">
+        <label for="status">Filter by Status:</label>
+        <select name="status" id="status" onchange="this.form.submit()">
+          <option value="">All Leads</option>
+          <option value="new" <%= statusFilter === 'new' ? 'selected' : '' %>>New</option>
+          <option value="contacted" <%= statusFilter === 'contacted' ? 'selected' : '' %>>Contacted</option>
+          <option value="qualified" <%= statusFilter === 'qualified' ? 'selected' : '' %>>Qualified</option>
+          <option value="converted" <%= statusFilter === 'converted' ? 'selected' : '' %>>Converted</option>
+          <option value="closed" <%= statusFilter === 'closed' ? 'selected' : '' %>>Closed</option>
+          <option value="failed" <%= statusFilter === 'failed' ? 'selected' : '' %>>Failed</option>
+        </select>
+      </form>
+    </div>
+
+    <!-- Leads Table -->
+    <div class="leads-section">
+      <% if (leads.length === 0) { %>
+        <div class="empty-state">
+          <p>No leads found. <% if (!pollerStatus.accessTokenConfigured) { %>Configure HUBSPOT_ACCESS_TOKEN in your .env file.<% } %></p>
+        </div>
+      <% } else { %>
+        <table class="leads-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Project</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% leads.forEach(lead => { %>
+              <tr class="lead-row status-<%= lead.status %>">
+                <td class="lead-name">
+                  <strong><%= lead.firstName %> <%= lead.lastName %></strong>
+                </td>
+                <td class="lead-email">
+                  <% if (lead.email) { %>
+                    <a href="mailto:<%= lead.email %>"><%= lead.email %></a>
+                  <% } else { %>
+                    <span class="no-data">-</span>
+                  <% } %>
+                </td>
+                <td class="lead-phone">
+                  <% if (lead.mobilePhone || lead.phone) { %>
+                    <a href="tel:<%= lead.mobilePhone || lead.phone %>">
+                      <%= lead.mobilePhone || lead.phone %>
+                    </a>
+                  <% } else { %>
+                    <span class="no-data">-</span>
+                  <% } %>
+                </td>
+                <td class="lead-project">
+                  <%= lead.projectName || '-' %>
+                </td>
+                <td class="lead-status">
+                  <span class="badge badge-<%= lead.status %>">
+                    <%= lead.status %>
+                  </span>
+                </td>
+                <td class="lead-created">
+                  <%= moment(lead.createdAt).format('MMM D, h:mm A') %>
+                </td>
+                <td class="lead-actions">
+                  <a href="/admin/leads/<%= lead._id %>" class="btn btn-sm btn-primary">View</a>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <% if (totalPages > 1) { %>
+          <div class="pagination">
+            <% if (currentPage > 1) { %>
+              <a href="/admin/leads?page=<%= currentPage - 1 %>&status=<%= statusFilter %>" class="btn btn-sm">← Previous</a>
+            <% } %>
+            <span class="page-info">Page <%= currentPage %> of <%= totalPages %> (<%= totalLeads %> leads)</span>
+            <% if (currentPage < totalPages) { %>
+              <a href="/admin/leads?page=<%= currentPage + 1 %>&status=<%= statusFilter %>" class="btn btn-sm">Next →</a>
+            <% } %>
+          </div>
+        <% } %>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<style>
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .poller-status {
+    background: #f8f9fa;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .status-indicator {
+    font-weight: 600;
+  }
+
+  .status-running {
+    color: #28a745;
+  }
+
+  .status-stopped {
+    color: #dc3545;
+  }
+
+  .status-detail {
+    color: #666;
+    font-size: 0.9rem;
+  }
+
+  .stat-card.stat-new { border-left: 4px solid #007bff; }
+  .stat-card.stat-contacted { border-left: 4px solid #17a2b8; }
+  .stat-card.stat-qualified { border-left: 4px solid #ffc107; }
+  .stat-card.stat-converted { border-left: 4px solid #28a745; }
+
+  .filters-section {
+    margin-bottom: 1.5rem;
+  }
+
+  .filter-form {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .filter-form select {
+    padding: 0.5rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+
+  .leads-section {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+
+  .leads-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .leads-table th,
+  .leads-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e1e8ed;
+  }
+
+  .leads-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #555;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+  }
+
+  .leads-table tbody tr:hover {
+    background: #f8f9fa;
+  }
+
+  .lead-name strong {
+    color: #2c3e50;
+  }
+
+  .lead-email a,
+  .lead-phone a {
+    color: #3498db;
+    text-decoration: none;
+  }
+
+  .lead-email a:hover,
+  .lead-phone a:hover {
+    text-decoration: underline;
+  }
+
+  .no-data {
+    color: #999;
+  }
+
+  .badge-new { background: #e3f2fd; color: #1565c0; }
+  .badge-contacted { background: #e0f7fa; color: #00838f; }
+  .badge-qualified { background: #fff3e0; color: #ef6c00; }
+  .badge-converted { background: #e8f5e9; color: #2e7d32; }
+  .badge-closed { background: #f3e5f5; color: #7b1fa2; }
+  .badge-failed { background: #ffebee; color: #c62828; }
+
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    border-top: 1px solid #e1e8ed;
+  }
+
+  .page-info {
+    color: #666;
+    font-size: 0.9rem;
+  }
+
+  .alert-success {
+    background: #d4edda;
+    color: #155724;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .leads-table {
+      font-size: 0.85rem;
+    }
+
+    .leads-table th,
+    .leads-table td {
+      padding: 0.75rem 0.5rem;
+    }
+
+    .lead-email,
+    .lead-project {
+      display: none;
+    }
+  }
+</style>
+
+<%- include('footer') %>
